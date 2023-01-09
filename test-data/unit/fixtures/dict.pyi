@@ -13,7 +13,8 @@ class object:
     def __init_subclass__(cls) -> None: pass
     def __eq__(self, other: object) -> bool: pass
 
-class type: pass
+class type:
+    __annotations__: Mapping[str, object]
 
 class dict(Mapping[KT, VT]):
     @overload
@@ -32,7 +33,12 @@ class dict(Mapping[KT, VT]):
     def __len__(self) -> int: ...
 
 class int: # for convenience
-    def __add__(self, x: int) -> int: pass
+    def __add__(self, x: Union[int, complex]) -> int: pass
+    def __radd__(self, x: int) -> int: pass
+    def __sub__(self, x: Union[int, complex]) -> int: pass
+    def __neg__(self) -> int: pass
+    real: int
+    imag: int
 
 class str: pass # for keyword argument key type
 class unicode: pass # needed for py2 docstrings
@@ -48,8 +54,12 @@ class list(Sequence[T]): # needed by some test cases
 class tuple(Generic[T]): pass
 class function: pass
 class float: pass
+class complex: pass
 class bool(int): pass
 
-class ellipsis: pass
+class ellipsis:
+    __class__: object
 def isinstance(x: object, t: Union[type, Tuple[type, ...]]) -> bool: pass
 class BaseException: pass
+
+def iter(__iterable: Iterable[T]) -> Iterator[T]: pass

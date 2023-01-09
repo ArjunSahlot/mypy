@@ -21,10 +21,10 @@ They can be defined using the :py:func:`@dataclasses.dataclass
     @dataclass
     class Application:
         name: str
-        plugins: List[str] = field(default_factory=list)
+        plugins: list[str] = field(default_factory=list)
 
     test = Application("Testing...")  # OK
-    bad = Application("Testing...", "with plugin")  # Error: List[str] expected
+    bad = Application("Testing...", "with plugin")  # Error: list[str] expected
 
 Mypy will detect special methods (such as :py:meth:`__lt__ <object.__lt__>`) depending on the flags used to
 define dataclasses. For example:
@@ -177,7 +177,7 @@ Caveats/Known Issues
   will complain about not understanding the argument and the type annotation in
   :py:meth:`__init__ <object.__init__>` will be replaced by ``Any``.
 
-* :ref:`Validator decorators <attrs:examples_validators>`
+* :ref:`Validator decorators <attrs:examples-validators>`
   and `default decorators <http://www.attrs.org/en/stable/examples.html#defaults>`_
   are not type-checked against the attribute they are setting/validating.
 

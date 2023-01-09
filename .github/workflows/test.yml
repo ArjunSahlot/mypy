@@ -1,47 +1,157 @@
-name: main
+name: Tests
 
 on:
+  workflow_dispatch:
   push:
-    branches: [master]
+    branches: [master, 'release*']
     tags: ['*']
   pull_request:
     paths-ignore:
     - 'docs/**'
+    - 'mypyc/doc/**'
     - '**/*.rst'
     - '**/*.md'
     - .gitignore
-    - .travis.yml
     - CREDITS
     - LICENSE
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  main:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        name: [windows-py37-32, windows-py37-64]
         include:
-        - name: windows-py37-32
-          python: '3.7'
-          arch: x86
-          os: windows-latest
-          toxenv: py37
-        - name: windows-py37-64
+        - name: Test suite with py37-windows-64
           python: '3.7'
           arch: x64
           os: windows-latest
           toxenv: py37
+        - name: Test suite with py38-ubuntu
+          python: '3.8'
+          arch: x64
+          os: ubuntu-latest
+          toxenv: py
+          tox_extra_args: "-n 2"
+        - name: Test suite with py39-ubuntu
+          python: '3.9'
+          arch: x64
+          os: ubuntu-latest
+          toxenv: py
+          tox_extra_args: "-n 2"
+        - name: Test suite with py37-ubuntu, mypyc-compiled
+          python: '3.7'
+          arch: x64
+          os: ubuntu-latest
+          toxenv: py
+          tox_extra_args: "-n 2"
+          test_mypyc: true
+        - name: Test suite with py310-ubuntu, mypyc-compiled
+          python: '3.10'
+          arch: x64
+          os: ubuntu-latest
+          toxenv: py
+          tox_extra_args: "-n 2"
+          test_mypyc: true
+        - name: Test suite with py310-ubuntu
+          python: '3.10'
+          arch: x64
+          os: ubuntu-latest
+          toxenv: py
+          tox_extra_args: "-n 2"
+        - name: Test suite with py311-ubuntu, mypyc-compiled
+          python: '3.11'
+          arch: x64
+          os: ubuntu-latest
+          toxenv: py
+          tox_extra_args: "-n 2"
+          test_mypyc: true
+        - name: mypyc runtime tests with py37-macos
+          python: '3.7'
+          arch: x64
+          os: macos-latest
+          toxenv: py
+          tox_extra_args: "-n 2 mypyc/test/test_run.py mypyc/test/test_external.py"
+        - name: mypyc runtime tests with py37-debug-build-ubuntu
+          python: '3.7.13'
+          arch: x64
+          os: ubuntu-latest
+          toxenv: py
+          tox_extra_args: "-n 2 mypyc/test/test_run.py mypyc/test/test_external.py"
+          debug_build: true
+        - name: Type check our own code (py37-ubuntu)
+          python: '3.7'
+          arch: x64
+          os: ubuntu-latest
+          toxenv: type
+        - name: Type check our own code (py37-windows-64)
+          python: '3.7'
+          arch: x64
+          os: windows-latest
+          toxenv: type
+        - name: Formatting with Black + isort and code style with flake8
+          python: '3.7'
+          arch: x64
+          os: ubuntu-latest
+          toxenv: lint
 
+    name: ${{ matrix.name }}
+    env:
+      TOX_SKIP_MISSING_INTERPRETERS: False
+      # Rich (pip)
+      FORCE_COLOR: 1
+      # Tox
+      PY_COLORS: 1
+      # Mypy (see https://github.com/python/mypy/issues/7771)
+      TERM: xterm-color
+      MYPY_FORCE_COLOR: 1
+      MYPY_FORCE_TERMINAL_WIDTH: 200
+      # Pytest
+      PYTEST_ADDOPTS: --color=yes
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-python@v2
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python }}
         architecture: ${{ matrix.arch }}
-    - name: install tox
-      run: pip install --upgrade 'setuptools!=50' 'virtualenv<20' tox==3.20.1
-    - name: setup tox environment
+    - name: Debug build
+      if: ${{ matrix.debug_build }}
+      run: |
+        PYTHONVERSION=${{ matrix.python }}
+        PYTHONDIR=~/python-debug/python-$PYTHONVERSION
+        VENV=$PYTHONDIR/env
+        ./misc/build-debug-python.sh $PYTHONVERSION $PYTHONDIR $VENV
+        source $VENV/bin/activate
+    - name: Install tox
+      run: pip install --upgrade 'setuptools!=50' tox==3.24.5
+    - name: Compiled with mypyc
+      if: ${{ matrix.test_mypyc }}
+      run: |
+        pip install -r test-requirements.txt
+        CC=clang MYPYC_OPT_LEVEL=0 MYPY_USE_MYPYC=1 pip install -e .
+    - name: Setup tox environment
       run: tox -e ${{ matrix.toxenv }} --notest
-    - name: test
-      run: tox -e ${{ matrix.toxenv }} --skip-pkg-install
+    - name: Test
+      run: tox -e ${{ matrix.toxenv }} --skip-pkg-install -- ${{ matrix.tox_extra_args }}
+
+  python-nightly:
+    runs-on: ubuntu-latest
+    name: Test suite with Python nightly
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.12-dev'
+      - name: Install tox
+        run: pip install --upgrade 'setuptools!=50' tox==3.24.5
+      - name: Setup tox environment
+        run: tox -e py --notest
+      - name: Test
+        run: tox -e py --skip-pkg-install -- "-n 2"
+        continue-on-error: true
+      - name: Mark as a success
+        run: exit 0

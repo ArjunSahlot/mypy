@@ -1,31 +1,3 @@
-# Misc test cases (compile and run)
-
-[case testAsync]
-import asyncio
-
-async def h() -> int:
-    return 1
-
-async def g() -> int:
-    await asyncio.sleep(0.01)
-    return await h()
-
-async def f() -> int:
-    return await g()
-
-loop = asyncio.get_event_loop()
-result = loop.run_until_complete(f())
-assert result == 1
-
-[typing fixtures/typing-full.pyi]
-
-[file driver.py]
-from native import f
-import asyncio
-loop = asyncio.get_event_loop()
-result = loop.run_until_complete(f())
-assert result == 1
-
 [case testMaybeUninitVar]
 class C:
     def __init__(self, x: int) -> None:
@@ -485,6 +457,8 @@ print(native.x)
 77
 
 [case testComprehensions]
+from typing import List
+
 # A list comprehension
 l = [str(x) + "     " + str(y) + "   " + str(x*y) for x in range(10)
      if x != 6 if x != 5 for y in range(x) if y*x != 8]
@@ -498,6 +472,17 @@ def pred(x: int) -> bool:
 # eventually and will raise an exception.
 l2 = [x for x in range(10) if x <= 6 if pred(x)]
 
+src = ['x']
+
+def f() -> List[str]:
+    global src
+    res = src
+    src = []
+    return res
+
+l3 = [s for s in f()]
+l4 = [s for s in f()]
+
 # A dictionary comprehension
 d = {k: k*k for k in range(10) if k != 5 if k != 6}
 
@@ -506,10 +491,12 @@ s = {str(x) + "     " + str(y) + "   " + str(x*y) for x in range(10)
      if x != 6 if x != 5 for y in range(x) if y*x != 8}
 
 [file driver.py]
-from native import l, l2, d, s
+from native import l, l2, l3, l4, d, s
 for a in l:
     print(a)
 print(tuple(l2))
+assert l3 == ['x']
+assert l4 == []
 for k in sorted(d):
     print(k, d[k])
 for a in sorted(s):
@@ -805,6 +792,51 @@ assert call_all(mixed_110) == 1
 assert call_any_nested([[1, 1, 1], [1, 1], []]) == 1
 assert call_any_nested([[1, 1, 1], [0, 1], []]) == 0
 
+[case testSum]
+[typing fixtures/typing-full.pyi]
+from typing import Any, List
+
+def test_sum_of_numbers() -> None:
+    assert sum(x for x in [1, 2, 3]) == 6
+    assert sum(x for x in [0.0, 1.2, 2]) == 6.2
+    assert sum(x for x in [1, 1j]) == 1 + 1j
+
+def test_sum_callables() -> None:
+    assert sum((lambda x: x == 0)(x) for x in []) == 0
+    assert sum((lambda x: x == 0)(x) for x in [0]) == 1
+    assert sum((lambda x: x == 0)(x) for x in [0, 0, 0]) == 3
+    assert sum((lambda x: x == 0)(x) for x in [0, 1, 0]) == 2
+    assert sum((lambda x: x % 2 == 0)(x) for x in range(2**10)) == 2**9
+
+def test_sum_comparisons() -> None:
+    assert sum(x == 0 for x in []) == 0
+    assert sum(x == 0 for x in [0]) == 1
+    assert sum(x == 0 for x in [0, 0, 0]) == 3
+    assert sum(x == 0 for x in [0, 1, 0]) == 2
+    assert sum(x % 2 == 0 for x in range(2**10)) == 2**9
+
+def test_sum_multi() -> None:
+    assert sum(i + j == 0 for i, j in zip([0, 0, 0], [0, 1, 0])) == 2
+
+def test_sum_misc() -> None:
+    # misc cases we do optimize (note, according to sum's helptext, we don't need to support
+    # non-numeric cases, but CPython and mypyc both do anyway)
+    assert sum(c == 'd' for c in 'abcdd') == 2
+    # misc cases we do not optimize
+    assert sum([0, 1]) == 1
+    assert sum([0, 1], 1) == 2
+
+def test_sum_start_given() -> None:
+    a = 1
+    assert sum((x == 0 for x in [0, 1]), a) == 2
+    assert sum(((lambda x: x == 0)(x) for x in []), 1) == 1
+    assert sum(((lambda x: x == 0)(x) for x in [0]), 1) == 2
+    assert sum(((lambda x: x == 0)(x) for x in [0, 0, 0]), 1) == 4
+    assert sum(((lambda x: x == 0)(x) for x in [0, 1, 0]), 1) == 3
+    assert sum(((lambda x: x % 2 == 0)(x) for x in range(2**10)), 1) == 2**9 + 1
+    assert sum((x for x in [1, 1j]), 2j) == 1 + 3j
+    assert sum((c == 'd' for c in 'abcdd'), 1) == 3
+
 [case testNoneStuff]
 from typing import Optional
 class A:
@@ -818,7 +850,6 @@ def none() -> None:
 
 def arg(x: Optional[A]) -> bool:
     return x is None
-
 
 [file driver.py]
 import native
@@ -902,9 +933,13 @@ print(z)
 [case testCheckVersion]
 import sys
 
-# We lie about the version we are running in tests if it is 3.5, so
-# that hits a crash case.
-if sys.version_info[:2] == (3, 10):
+if sys.version_info[:2] == (3, 12):
+    def version() -> int:
+        return 12
+elif sys.version_info[:2] == (3, 11):
+    def version() -> int:
+        return 11
+elif sys.version_info[:2] == (3, 10):
     def version() -> int:
         return 10
 elif sys.version_info[:2] == (3, 9):
@@ -927,12 +962,8 @@ else:
 import sys
 version = sys.version_info[:2]
 
-try:
-    import native
-    assert version != (3, 5), "3.5 should fail!"
-    assert native.version() == sys.version_info[1]
-except RuntimeError:
-    assert version == (3, 5), "only 3.5 should fail!"
+import native
+assert native.version() == sys.version_info[1]
 
 [case testTypeErrorMessages]
 from typing import Tuple
@@ -1037,3 +1068,51 @@ C = sys.platform == 'x' and (lambda x: y + x)
 assert not A
 assert not B
 assert not C
+
+[case testDoesntSegfaultWhenTopLevelFails]
+# make the initial import fail
+assert False
+
+class C:
+    def __init__(self):
+        self.x = 1
+        self.y = 2
+def test() -> None:
+    a = C()
+[file driver.py]
+# load native, cause PyInit to be run, create the module but don't finish initializing the globals
+try:
+    import native
+except:
+    pass
+try:
+    # try accessing those globals that were never properly initialized
+    import native
+    native.test()
+# should fail with AssertionError due to `assert False` in other function
+except AssertionError:
+    pass
+
+[case testRepeatedUnderscoreFunctions]
+def _(arg): pass
+def _(arg): pass
+
+[case testUnderscoreFunctionsInMethods]
+
+class A:
+    def _(arg): pass
+    def _(arg): pass
+class B(A):
+    def _(arg): pass
+    def _(arg): pass
+
+[case testGlobalRedefinition_toplevel]
+# mypy: allow-redefinition
+i = 0
+i += 1
+i = "foo"
+i += i
+i = b"foo"
+
+def test_redefinition() -> None:
+    assert i == b"foo"

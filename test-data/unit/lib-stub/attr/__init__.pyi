@@ -1,4 +1,4 @@
-from typing import TypeVar, overload, Callable, Any, Type, Optional, Union, Sequence, Mapping
+from typing import TypeVar, overload, Callable, Any, Type, Optional, Union, Sequence, Mapping, Generic
 
 _T = TypeVar('_T')
 _C = TypeVar('_C', bound=type)
@@ -94,6 +94,7 @@ def attrs(maybe_cls: _C,
           cache_hash: bool = ...,
           eq: Optional[bool] = ...,
           order: Optional[bool] = ...,
+          match_args: bool = ...,
           ) -> _C: ...
 @overload
 def attrs(maybe_cls: None = ...,
@@ -112,8 +113,11 @@ def attrs(maybe_cls: None = ...,
           cache_hash: bool = ...,
           eq: Optional[bool] = ...,
           order: Optional[bool] = ...,
+          match_args: bool = ...,
           ) -> Callable[[_C], _C]: ...
 
+
+class Attribute(Generic[_T]): pass
 
 # aliases
 s = attributes = attrs
